@@ -64,9 +64,9 @@ def scale_image(image, factor, method="bilinear"):
 
     t0 = time.perf_counter()
     if method == "nearest":
-        result = nearest_neighbor(image, new_h, new_w)
+        result = nearest_neighbor(image, new_h, new_w, disable_tqdm=True)
     else:
-        result = bilinear_interpolation(image, new_h, new_w)
+        result = bilinear_interpolation(image, new_h, new_w, disable_tqdm=True)
     elapsed = time.perf_counter() - t0
 
     return result, elapsed
@@ -82,6 +82,344 @@ def load_lottie_url(url: str):
     except Exception:
         pass
     return None
+
+
+# #########################################################################
+#                     DETAIL INSPECTOR (Zoom / Crop)
+# #########################################################################
+
+def render_detail_inspector(original_img, nn_img, bilinear_img, scale_factor):
+    """
+    Interactive Detail Inspector -- lets users zoom into a region and
+    see raw pixels side-by-side, defeating browser auto-scaling.
+
+    Parameters
+    ----------
+    original_img : np.ndarray (BGR uint8)  -- source image.
+    nn_img       : np.ndarray (BGR uint8)  -- Nearest-Neighbour result.
+    bilinear_img : np.ndarray (BGR uint8)  -- Bilinear result.
+    scale_factor : int                     -- upscale factor (e.g. 4).
+
+    Cropping Math
+    -------------
+    * User selects (cx, cy) on the ORIGINAL image via sliders.
+    * A fixed 50x50 box is extracted centred on that point (clamped).
+    * For upscaled images the same region maps to coordinates and size
+      multiplied by scale_factor, guaranteeing the identical spatial area.
+    """
+    with st.expander("\U0001f50d Inspect Pixels (Zoom Tool)", expanded=True):
+
+        orig_h, orig_w = original_img.shape[:2]
+        CROP_SIZE = 50  # pixels in original-image space
+
+        # ---- Default: centre of image ----
+        default_x = orig_w // 2
+        default_y = orig_h // 2
+
+        st.markdown(
+            '<div class="info-banner">'
+            'Drag the sliders to move the <strong>50 x 50</strong> zoom '
+            'window across the original image. The same spatial region is '
+            'shown for each method so you can compare raw pixels.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        slider_c1, slider_c2 = st.columns(2)
+        with slider_c1:
+            cx = st.slider(
+                "X Coordinate (horizontal)",
+                min_value=0, max_value=orig_w - 1,
+                value=default_x, key="zoom_x",
+            )
+        with slider_c2:
+            cy = st.slider(
+                "Y Coordinate (vertical)",
+                min_value=0, max_value=orig_h - 1,
+                value=default_y, key="zoom_y",
+            )
+
+        # ============================================================
+        #  Crop box on the ORIGINAL image  (edge-clamped)
+        # ============================================================
+        half = CROP_SIZE // 2
+
+        x1_o = max(cx - half, 0)
+        y1_o = max(cy - half, 0)
+        x2_o = min(x1_o + CROP_SIZE, orig_w)
+        y2_o = min(y1_o + CROP_SIZE, orig_h)
+        # Re-adjust if we hit the right/bottom edge
+        x1_o = max(x2_o - CROP_SIZE, 0)
+        y1_o = max(y2_o - CROP_SIZE, 0)
+
+        # numpy: img[row_start:row_end, col_start:col_end]
+        patch_orig = original_img[y1_o:y2_o, x1_o:x2_o]
+
+        # ============================================================
+        #  Crop box on the UPSCALED images (same spatial region)
+        # ============================================================
+        sf = scale_factor
+        x1_u, y1_u = x1_o * sf, y1_o * sf
+        x2_u, y2_u = x2_o * sf, y2_o * sf
+
+        up_h, up_w = nn_img.shape[:2]
+        x2_u = min(x2_u, up_w)
+        y2_u = min(y2_u, up_h)
+
+        patch_nn  = nn_img[y1_u:y2_u, x1_u:x2_u]
+        patch_bil = bilinear_img[y1_u:y2_u, x1_u:x2_u]
+
+        # ============================================================
+        #  Display the three patches side-by-side
+        # ============================================================
+        z1, z2, z3 = st.columns(3)
+
+        with z1:
+            pw, ph = patch_orig.shape[1], patch_orig.shape[0]
+            st.markdown(
+                f'<div class="zoom-label">'
+                f'<div class="title">Original (Low-Res Pixels)</div>'
+                f'<div class="dims">{pw} x {ph} px</div>'
+                f'</div>', unsafe_allow_html=True)
+            st.markdown('<div class="pixelated-img">',
+                        unsafe_allow_html=True)
+            st.image(bgr_to_rgb(patch_orig), output_format="PNG",
+                     width="stretch")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with z2:
+            pw, ph = patch_nn.shape[1], patch_nn.shape[0]
+            st.markdown(
+                f'<div class="zoom-label">'
+                f'<div class="title">Nearest-Neighbour (Blocky)</div>'
+                f'<div class="dims">{pw} x {ph} px</div>'
+                f'</div>', unsafe_allow_html=True)
+            st.markdown('<div class="pixelated-img">',
+                        unsafe_allow_html=True)
+            st.image(bgr_to_rgb(patch_nn), output_format="PNG",
+                     width="stretch")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with z3:
+            pw, ph = patch_bil.shape[1], patch_bil.shape[0]
+            st.markdown(
+                f'<div class="zoom-label">'
+                f'<div class="title">Bilinear Interpolation (Smooth)</div>'
+                f'<div class="dims">{pw} x {ph} px</div>'
+                f'</div>', unsafe_allow_html=True)
+            st.markdown('<div class="pixelated-img">',
+                        unsafe_allow_html=True)
+            st.image(bgr_to_rgb(patch_bil), output_format="PNG",
+                     width="stretch")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # ---- Coordinates footer ----
+        st.caption(
+            f"ROI: original[{y1_o}:{y2_o}, {x1_o}:{x2_o}]  |  "
+            f"upscaled[{y1_u}:{y2_u}, {x1_u}:{x2_u}]  |  "
+            f"Crop: {CROP_SIZE}px (original) / {CROP_SIZE * sf}px (upscaled)"
+        )
+
+
+# #########################################################################
+#                  AUTOMATED DIAGNOSTIC TEST MODULE
+# #########################################################################
+
+def run_synthetic_diagnostic_test(scale_factor):
+    """
+    Automated system test using a deterministic 2x2 synthetic image.
+
+    This function is fully decoupled from the user-upload pipeline.
+    It programmatically generates a known input, runs both algorithms,
+    validates output shapes, computes a difference map, and renders
+    all results with performance metrics.
+
+    Parameters
+    ----------
+    scale_factor : int
+        Upscale factor (e.g. 4 produces an 8x8 output from 2x2).
+
+    Synthetic Pattern
+    -----------------
+        +-------+-------+
+        | Black | White |
+        | (0,0) | (255) |
+        +-------+-------+
+        | Gray  | Navy  |
+        | (128) | Blue  |
+        +-------+-------+
+    """
+    st.markdown("---")
+    st.markdown("### \U0001f9ea Automated System Test")
+
+    # ==================================================================
+    #  Step 1 -- Generate deterministic 2x2 synthetic image (BGR)
+    # ==================================================================
+    synthetic = np.zeros((2, 2, 3), dtype=np.uint8)
+    synthetic[0, 0] = [0,   0,   0]     # Black
+    synthetic[0, 1] = [255, 255, 255]    # White
+    synthetic[1, 0] = [128, 128, 128]    # Gray
+    synthetic[1, 1] = [128, 0,   0]      # Navy Blue (BGR)
+
+    src_h, src_w = synthetic.shape[:2]
+    dst_h, dst_w = src_h * scale_factor, src_w * scale_factor
+
+    st.markdown(
+        f'<div class="info-banner">'
+        f'<strong>Synthetic input:</strong> {src_w}x{src_h} px &rarr; '
+        f'{dst_w}x{dst_h} px ({scale_factor}x upscale)<br>'
+        f'<strong>Pattern:</strong> '
+        f'TL=Black(0,0,0) &bull; TR=White(255,255,255) &bull; '
+        f'BL=Gray(128,128,128) &bull; BR=Navy(0,0,128)'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Show the "Before" input
+    st.markdown("#### Before (2x2 Source)")
+    st.markdown('<div class="pixelated-img">', unsafe_allow_html=True)
+    st.image(bgr_to_rgb(synthetic), width=160, output_format="PNG")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ==================================================================
+    #  Step 2 -- Run both algorithms with timing
+    # ==================================================================
+    with st.spinner("Running diagnostic interpolation..."):
+        nn_result,  t_nn  = scale_image(synthetic, scale_factor, "nearest")
+        bil_result, t_bil = scale_image(synthetic, scale_factor, "bilinear")
+
+    # ==================================================================
+    #  Step 3 -- Programmatic validation
+    # ==================================================================
+    expected_shape = (dst_h, dst_w, 3)
+    tests_passed = True
+    messages = []
+
+    # Shape checks
+    if nn_result.shape == expected_shape:
+        messages.append(f"NN output shape: {nn_result.shape} == {expected_shape}")
+    else:
+        tests_passed = False
+        messages.append(f"NN shape MISMATCH: {nn_result.shape} != {expected_shape}")
+
+    if bil_result.shape == expected_shape:
+        messages.append(f"Bilinear output shape: {bil_result.shape} == {expected_shape}")
+    else:
+        tests_passed = False
+        messages.append(f"Bilinear shape MISMATCH: {bil_result.shape} != {expected_shape}")
+
+    # Dtype check
+    if nn_result.dtype == np.uint8 and bil_result.dtype == np.uint8:
+        messages.append("Dtype: uint8 (correct)")
+    else:
+        tests_passed = False
+        messages.append(f"Dtype MISMATCH: NN={nn_result.dtype}, Bil={bil_result.dtype}")
+
+    # Value range check
+    if nn_result.max() <= 255 and bil_result.max() <= 255:
+        messages.append("Value range: [0, 255] (correct)")
+    else:
+        tests_passed = False
+        messages.append("Value range EXCEEDED 255")
+
+    # NN should have exact source colors only (no blending)
+    nn_unique = len(np.unique(nn_result.reshape(-1, 3), axis=0))
+    messages.append(f"NN unique colors: {nn_unique} (expected <= 4)")
+
+    # Bilinear should produce more unique colors (smooth gradients)
+    bil_unique = len(np.unique(bil_result.reshape(-1, 3), axis=0))
+    messages.append(f"Bilinear unique colors: {bil_unique} (expected > 4)")
+
+    if tests_passed:
+        st.success(
+            "**Test Passed:** Output dimensions, dtype, value range, "
+            "and matrix integrity verified."
+        )
+    else:
+        st.error("**Test Failed:** See details below.")
+
+    with st.expander("Validation details", expanded=not tests_passed):
+        for msg in messages:
+            st.text(msg)
+
+    # ==================================================================
+    #  Step 4 -- Visual "After" display (3 columns + difference map)
+    # ==================================================================
+    st.markdown("#### After (Upscaled Results)")
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.markdown(
+            '<div class="zoom-label">'
+            '<div class="title">Source</div>'
+            f'<div class="dims">{src_w}x{src_h}</div>'
+            '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="pixelated-img">', unsafe_allow_html=True)
+        st.image(bgr_to_rgb(synthetic), output_format="PNG",
+                 width="stretch")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c2:
+        st.markdown(
+            '<div class="zoom-label">'
+            '<div class="title">Nearest-Neighbour</div>'
+            f'<div class="dims">{dst_w}x{dst_h} &bull; Blocky</div>'
+            '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="pixelated-img">', unsafe_allow_html=True)
+        st.image(bgr_to_rgb(nn_result), output_format="PNG",
+                 width="stretch")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c3:
+        st.markdown(
+            '<div class="zoom-label">'
+            '<div class="title">Bilinear</div>'
+            f'<div class="dims">{dst_w}x{dst_h} &bull; Smooth</div>'
+            '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="pixelated-img">', unsafe_allow_html=True)
+        st.image(bgr_to_rgb(bil_result), output_format="PNG",
+                 width="stretch")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c4:
+        # Difference map: absolute per-pixel difference
+        diff = np.abs(
+            nn_result.astype(np.int16) - bil_result.astype(np.int16)
+        ).astype(np.uint8)
+        # Amplify for visibility (stretch to full 0-255 range)
+        max_diff = diff.max() if diff.max() > 0 else 1
+        diff_vis = (diff.astype(np.float64) / max_diff * 255).astype(np.uint8)
+
+        st.markdown(
+            '<div class="zoom-label">'
+            '<div class="title">|NN - Bilinear|</div>'
+            f'<div class="dims">Difference Map</div>'
+            '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="pixelated-img">', unsafe_allow_html=True)
+        st.image(bgr_to_rgb(diff_vis), output_format="PNG",
+                 width="stretch")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ==================================================================
+    #  Step 5 -- Performance report
+    # ==================================================================
+    st.markdown("#### Performance Report")
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("Nearest-Neighbour", f"{t_nn*1000:.2f} ms")
+    with m2:
+        st.metric("Bilinear", f"{t_bil*1000:.2f} ms")
+    with m3:
+        ratio = t_bil / max(t_nn, 1e-9)
+        st.metric("Speedup Ratio", f"{ratio:.1f}x",
+                  delta=f"Bilinear is {ratio:.1f}x slower",
+                  delta_color="inverse")
+
+    st.caption(
+        f"Synthetic {src_w}x{src_h} -> {dst_w}x{dst_h}  |  "
+        f"NN unique colors: {nn_unique}  |  "
+        f"Bilinear unique colors: {bil_unique}"
+    )
 
 
 # #########################################################################
@@ -171,6 +509,33 @@ st.markdown("""
     section[data-testid="stSidebar"] .stMarkdown h2,
     section[data-testid="stSidebar"] .stMarkdown h3 {
         color: #c0c0e8;
+    }
+
+    /* ---- Force raw pixel rendering (no browser anti-aliasing) ---- */
+    .pixelated-img img {
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
+    }
+
+    /* ---- Zoom patch label badges ---- */
+    .zoom-label {
+        background: linear-gradient(135deg, #1e1e2f, #2a2a40);
+        border: 1px solid #3a3a5c;
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        text-align: center;
+        margin-bottom: 0.4rem;
+    }
+    .zoom-label .title {
+        color: #e0e0ff;
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+    .zoom-label .dims {
+        color: #6a6a9a;
+        font-size: 0.75rem;
+        margin-top: 0.15rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -275,6 +640,12 @@ with st.sidebar:
         "🚀 Run Interpolation",
         use_container_width=True,  # use width='stretch' for Streamlit >= 1.58
         type="primary",
+    )
+
+    st.markdown("---")
+    test_button = st.button(
+        "\U0001f9ea Run Automated System Test",
+        use_container_width=True,
     )
 
     st.markdown("---")
@@ -395,6 +766,16 @@ if uploaded_file is not None:
             </div>
             """, unsafe_allow_html=True)
 
+        # ============================================================
+        #  Detail Inspector (Zoom Tool)
+        # ============================================================
+        render_detail_inspector(
+            original_img=src_bgr,
+            nn_img=nn_result,
+            bilinear_img=bil_result,
+            scale_factor=scale_factor,
+        )
+
     elif not run_button:
         # ---- Show a preview of the original ----
         st.image(
@@ -418,3 +799,10 @@ else:
         </p>
     </div>
     """, unsafe_allow_html=True)
+
+# #########################################################################
+#          DIAGNOSTIC TEST EXECUTION (independent of upload flow)
+# #########################################################################
+
+if test_button:
+    run_synthetic_diagnostic_test(scale_factor)

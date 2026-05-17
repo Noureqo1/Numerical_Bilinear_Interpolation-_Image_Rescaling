@@ -47,7 +47,7 @@ if __name__ == "__main__":
 #  1.  BILINEAR INTERPOLATION  (core algorithm - from scratch)
 # =========================================================================
 
-def bilinear_interpolation(src, dst_height, dst_width):
+def bilinear_interpolation(src, dst_height, dst_width, disable_tqdm=False):
     """
     Rescale *src* to (dst_height x dst_width) using bilinear interpolation.
 
@@ -70,7 +70,7 @@ def bilinear_interpolation(src, dst_height, dst_width):
 
     print("\n[BILINEAR] Bilinear Interpolation -- processing rows...")
     for u in tqdm(range(dst_height), desc="Bilinear", unit="row",
-                  bar_format="{l_bar}{bar:40}{r_bar}"):
+                  bar_format="{l_bar}{bar:40}{r_bar}", disable=disable_tqdm):
 
         # Step 1 - Inverse mapping: destination row -> source row
         x_i = u / S_x
@@ -117,7 +117,7 @@ def bilinear_interpolation(src, dst_height, dst_width):
 #  2.  NEAREST-NEIGHBOUR BASELINE
 # =========================================================================
 
-def nearest_neighbor(src, dst_height, dst_width):
+def nearest_neighbor(src, dst_height, dst_width, disable_tqdm=False):
     """
     Rescale using nearest-neighbour: round to closest source pixel.
     Produces characteristic "blocky" artefacts.
@@ -135,7 +135,7 @@ def nearest_neighbor(src, dst_height, dst_width):
 
     print("\n[NN] Nearest-Neighbour -- processing rows...")
     for u in tqdm(range(dst_height), desc="Nearest ", unit="row",
-                  bar_format="{l_bar}{bar:40}{r_bar}"):
+                  bar_format="{l_bar}{bar:40}{r_bar}", disable=disable_tqdm):
         x_near = min(int(round(u / S_x)), src_h - 1)
         for v in range(dst_width):
             y_near = min(int(round(v / S_y)), src_w - 1)
