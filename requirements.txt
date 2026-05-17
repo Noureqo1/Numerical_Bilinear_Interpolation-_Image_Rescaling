@@ -1,0 +1,13 @@
+numpy
+opencv-python
+matplotlib
+pandas
+tabulate
+tqdm
+streamlit
+streamlit-lottie
+Pillow
+requests
+fastapi
+uvicorn
+python-multipart

@@ -1,4 +1,7 @@
-"""
+import os
+
+new_app_content = """\
+\"\"\"
 =============================================================================
   Bilinear Interpolation -- Streamlit UI (API Client)
   -------------------------------------------------------
@@ -14,7 +17,7 @@
 
   Stack: Streamlit, requests, NumPy (display only), Pillow
 =============================================================================
-"""
+\"\"\"
 
 import os
 import sys
@@ -39,30 +42,30 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 # #########################################################################
 
 def pil_to_bgr(pil_img):
-    """Convert a PIL Image (RGB/RGBA) to an OpenCV BGR numpy array."""
+    \"\"\"Convert a PIL Image (RGB/RGBA) to an OpenCV BGR numpy array.\"\"\"
     arr = np.array(pil_img.convert("RGB"))
     return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
 def bgr_to_rgb(bgr_img):
-    """Convert an OpenCV BGR array to RGB for Streamlit display."""
+    \"\"\"Convert an OpenCV BGR array to RGB for Streamlit display.\"\"\"
     return cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
 
 def pil_to_png_bytes(pil_img):
-    """Convert a PIL Image to PNG bytes for API upload."""
+    \"\"\"Convert a PIL Image to PNG bytes for API upload.\"\"\"
     buf = io.BytesIO()
     pil_img.convert("RGB").save(buf, format="PNG")
     return buf.getvalue()
 
 def bgr_to_png_bytes(bgr_array):
-    """Encode a BGR numpy array to PNG bytes."""
+    \"\"\"Encode a BGR numpy array to PNG bytes.\"\"\"
     success, buf = cv2.imencode(".png", bgr_array)
     return buf.tobytes() if success else b""
 
 def api_upscale(image_bytes, scale_factor, algorithm="bilinear"):
-    """
+    \"\"\"
     Send an image to the FastAPI /upscale endpoint.
     Returns (result_bgr_array, elapsed_seconds, width, height)
-    """
+    \"\"\"
     try:
         resp = requests.post(
             f"{API_BASE_URL}/upscale",
@@ -88,10 +91,10 @@ def api_upscale(image_bytes, scale_factor, algorithm="bilinear"):
         st.stop()
 
 def api_evaluate(gt_bytes, upscaled_bytes):
-    """
+    \"\"\"
     Send two images to the FastAPI /evaluate endpoint.
     Returns dict with keys: mse, psnr, mae.
-    """
+    \"\"\"
     try:
         resp = requests.post(
             f"{API_BASE_URL}/evaluate",
@@ -112,7 +115,7 @@ def api_evaluate(gt_bytes, upscaled_bytes):
         st.stop()
 
 def load_lottie_url(url: str):
-    """Fetch a Lottie animation JSON from a public URL."""
+    \"\"\"Fetch a Lottie animation JSON from a public URL.\"\"\"
     try:
         r = requests.get(url, timeout=5)
         if r.status_code == 200:
@@ -126,10 +129,10 @@ def load_lottie_url(url: str):
 # #########################################################################
 
 def render_detail_inspector(original_img, nn_img, bilinear_img, scale_factor):
-    """
+    \"\"\"
     Interactive Detail Inspector -- lets users zoom into a region and
     see raw pixels side-by-side, defeating browser auto-scaling.
-    """
+    \"\"\"
     with st.expander("🔍 Inspect Pixels (Zoom Tool)", expanded=True):
 
         orig_h, orig_w = original_img.shape[:2]
@@ -241,10 +244,10 @@ def render_detail_inspector(original_img, nn_img, bilinear_img, scale_factor):
 # #########################################################################
 
 def run_synthetic_diagnostic_test(scale_factor):
-    """
+    \"\"\"
     Automated system test using a deterministic 2x2 synthetic image.
     This function delegates the computation to the API.
-    """
+    \"\"\"
     st.markdown("---")
     st.markdown("### 🧪 Automated System Test")
 
@@ -404,10 +407,10 @@ def run_synthetic_diagnostic_test(scale_factor):
 # #########################################################################
 
 def render_error_analysis(scale_factor):
-    """
+    \"\"\"
     Full Error Analysis UI component.
     Delegates error metric computation to the FastAPI backend.
-    """
+    \"\"\"
     import matplotlib.pyplot as plt
     import glob
 
@@ -614,7 +617,7 @@ st.set_page_config(
 #                     CUSTOM CSS
 # #########################################################################
 
-st.markdown("""
+st.markdown(\"\"\"
 <style>
     .main-header {
         background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
@@ -671,18 +674,18 @@ st.markdown("""
     .zoom-label .title { color: #e0e0ff; font-size: 0.95rem; font-weight: 600; }
     .zoom-label .dims { color: #6a6a9a; font-size: 0.75rem; margin-top: 0.15rem; }
 </style>
-""", unsafe_allow_html=True)
+\"\"\", unsafe_allow_html=True)
 
 # #########################################################################
 #                     HEADER
 # #########################################################################
 
-st.markdown("""
+st.markdown(\"\"\"
 <div class="main-header">
     <h1>🔬 Bilinear Interpolation &mdash; Image Rescaler</h1>
     <p>A pedagogical tool comparing Nearest-Neighbour vs Bilinear upscaling &mdash; powered by FastAPI backend</p>
 </div>
-""", unsafe_allow_html=True)
+\"\"\", unsafe_allow_html=True)
 
 # #########################################################################
 #                     TUTORIAL / EXPANDER
@@ -691,7 +694,7 @@ st.markdown("""
 with st.expander("📖 How to use this tool & How it works", expanded=False):
     tut_col1, tut_col2 = st.columns([2, 1])
     with tut_col1:
-        st.markdown(r"""
+        st.markdown(\"\"\"
 ### How to use
 1. **Upload** a PNG / JPG image using the sidebar on the left.
 2. **Choose** a scaling factor (2x -- 8x) with the slider.
@@ -701,20 +704,14 @@ with st.expander("📖 How to use this tool & How it works", expanded=False):
 
 ### Nearest-Neighbour (blocky)
 For each destination pixel, we simply pick the **closest** source pixel:
-$$x_{\text{near}} = \text{round}\!\left(\frac{u}{S_x}\right), \quad y_{\text{near}} = \text{round}\!\left(\frac{v}{S_y}\right)$$
+$$x_{\\text{near}} = \\text{round}\\!\\left(\\frac{u}{S_x}\\right), \\quad y_{\\text{near}} = \\text{round}\\!\\left(\\frac{v}{S_y}\\right)$$
 This is fast but produces **blocky, staircase-like artefacts**.
-""")
-        if os.path.exists("assets/nn.png"):
-            st.image("assets/nn.png", use_column_width=True)
 
-        st.markdown(r"""
 ### Bilinear Interpolation (smooth)
 We use the **area-weighted Lagrange** form to blend the four surrounding integer-grid pixels:
-$$f(x_i,\,y_i) = (1-dx)(1-dy)\,f(x_1,y_1) + dx\,(1-dy)\,f(x_2,y_1) + (1-dx)\,dy\,f(x_1,y_2) + dx\,dy\,f(x_2,y_2)$$
+$$f(x_i,\\,y_i) = (1-dx)(1-dy)\\,f(x_1,y_1) + dx\\,(1-dy)\\,f(x_2,y_1) + (1-dx)\\,dy\\,f(x_1,y_2) + dx\\,dy\\,f(x_2,y_2)$$
 This produces **smooth gradients** at the cost of more computation.
-""")
-        if os.path.exists("assets/bilinear.png"):
-            st.image("assets/bilinear.png", use_column_width=True)
+        \"\"\")
     with tut_col2:
         try:
             from streamlit_lottie import st_lottie
@@ -775,14 +772,14 @@ if uploaded_file is not None:
     h, w = src_bgr.shape[:2]
     img_bytes = pil_to_png_bytes(pil_img)
 
-    st.markdown(f"""
+    st.markdown(f\"\"\"
     <div class="info-banner">
         <strong>Image loaded:</strong> {uploaded_file.name}
         &nbsp;&bull;&nbsp; {w} &times; {h} px
         &nbsp;&bull;&nbsp; Target: {w * scale_factor} &times; {h * scale_factor} px
         ({scale_factor}x upscale)
     </div>
-    """, unsafe_allow_html=True)
+    \"\"\", unsafe_allow_html=True)
 
     if run_button:
         target_pixels = (h * scale_factor) * (w * scale_factor)
@@ -806,33 +803,33 @@ if uploaded_file is not None:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.markdown(f"""
+            st.markdown(f\"\"\"
             <div class="metric-card">
                 <div class="label">Original</div>
                 <div class="value">{w} x {h}</div>
                 <div class="sub">Source image</div>
             </div>
-            """, unsafe_allow_html=True)
+            \"\"\", unsafe_allow_html=True)
             st.image(bgr_to_rgb(src_bgr), width="stretch")
 
         with col2:
-            st.markdown(f"""
+            st.markdown(f\"\"\"
             <div class="metric-card">
                 <div class="label">Nearest-Neighbour</div>
                 <div class="value">{dst_w_nn} x {dst_h_nn}</div>
                 <div class="sub">⏱ {t_nn:.3f} s &nbsp;|&nbsp; Blocky</div>
             </div>
-            """, unsafe_allow_html=True)
+            \"\"\", unsafe_allow_html=True)
             st.image(bgr_to_rgb(nn_result), width="stretch")
 
         with col3:
-            st.markdown(f"""
+            st.markdown(f\"\"\"
             <div class="metric-card">
                 <div class="label">Bilinear Interpolation</div>
                 <div class="value">{dst_w_bil} x {dst_h_bil}</div>
                 <div class="sub">⏱ {t_bil:.3f} s &nbsp;|&nbsp; Smooth</div>
             </div>
-            """, unsafe_allow_html=True)
+            \"\"\", unsafe_allow_html=True)
             st.image(bgr_to_rgb(bil_result), width="stretch")
 
         st.markdown("### ⏱️ Execution Time Comparison")
@@ -847,7 +844,7 @@ if uploaded_file is not None:
             st.bar_chart(df_time.set_index("Method"), height=250)
 
         with chart_col2:
-            st.markdown(f"""
+            st.markdown(f\"\"\"
             <div class="metric-card">
                 <div class="label">Speedup Ratio</div>
                 <div class="value">{t_bil / max(t_nn, 0.0001):.1f}x</div>
@@ -858,7 +855,7 @@ if uploaded_file is not None:
                 <div class="value">{target_pixels:,}</div>
                 <div class="sub">{w*scale_factor} x {h*scale_factor}</div>
             </div>
-            """, unsafe_allow_html=True)
+            \"\"\", unsafe_allow_html=True)
 
         render_detail_inspector(
             original_img=src_bgr,
@@ -871,7 +868,7 @@ if uploaded_file is not None:
         st.image(bgr_to_rgb(src_bgr), caption=f"Preview: {uploaded_file.name} ({w}x{h})", width=min(w, 500))
 
 else:
-    st.markdown("""
+    st.markdown(\"\"\"
     <div style="text-align:center; padding:4rem 2rem; color:#6a6a9a;">
         <h2 style="color:#8888bb;">👈 Upload an image to get started</h2>
         <p style="font-size:1.1rem;">
@@ -883,10 +880,16 @@ else:
             or go bigger to really see the difference between blocky and smooth.
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    \"\"\", unsafe_allow_html=True)
 
 if test_button:
     run_synthetic_diagnostic_test(scale_factor)
 
 if st.session_state.get("show_error_analysis", False):
     render_error_analysis(scale_factor)
+"""
+
+with open(r"d:\Numerical\app.py", "w", encoding="utf-8") as f:
+    f.write(new_app_content)
+
+print("app.py rewritten successfully!")

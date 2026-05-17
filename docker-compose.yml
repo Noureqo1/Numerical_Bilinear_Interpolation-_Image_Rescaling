@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8501:8501"
+    environment:
+      # Inject the API URL so the frontend can route traffic via Docker's internal DNS
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./assets:/app/assets

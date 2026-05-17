@@ -8,7 +8,10 @@
 help:
 	@echo "Available commands:"
 	@echo "  make install        - Install all required Python dependencies"
+	@echo "  make api            - Launch the FastAPI backend server"
 	@echo "  make app            - Launch the interactive Streamlit Web UI"
+	@echo "  make dev            - Launch both the API and Streamlit UI in parallel"
+	@echo "  make docker         - Build and run the Docker Compose cluster in detached mode"
 	@echo "  make pipeline-set5  - Run the headless benchmark pipeline on the Set5 dataset"
 	@echo "  make pipeline-set14 - Run the headless benchmark pipeline on the Set14 dataset"
 	@echo "  make test           - Run the headless diagnostic test (no UI)"
@@ -16,11 +19,24 @@ help:
 
 install:
 	@echo "Installing dependencies..."
-	python -m pip install numpy opencv-python matplotlib pandas tabulate tqdm streamlit streamlit-lottie Pillow requests
+	python -m pip install -r requirements.txt
+
+api:
+	@echo "Launching FastAPI backend..."
+	python -m uvicorn api:app --reload --port 8000
 
 app:
 	@echo "Launching Streamlit Web UI..."
 	python -m streamlit run app.py
+
+dev:
+	@echo "Starting full development environment (API + UI)..."
+	cmd /c start cmd /k "make api"
+	cmd /c start cmd /k "make app"
+
+docker:
+	@echo "Building and starting Docker Compose cluster..."
+	docker-compose up --build -d
 
 pipeline-set5:
 	@echo "Running batch pipeline on Set5 dataset..."
