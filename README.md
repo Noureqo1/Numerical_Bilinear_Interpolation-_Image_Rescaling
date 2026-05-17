@@ -96,3 +96,11 @@ For each destination pixel, the algorithm simply picks the closest source pixel.
 
 ### Bilinear Interpolation
 Uses the area-weighted Lagrange form to blend the four surrounding integer-grid pixels. This calculates intermediate values based on spatial distance, producing smooth gradients at the cost of slightly more computational time.
+---
+
+## 🎬 Video Demonstration
+
+You can watch the full project walkthrough and live upscaling demonstration here:
+ [Google Drive Video Demo](https://drive.google.com/file/d/12rzPYZiTAC0OW5AKnk0PmZDm6WCSMdXR/view?usp=sharing)
+
+---
