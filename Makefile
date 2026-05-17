@@ -19,15 +19,16 @@ help:
 
 install:
 	@echo "Installing dependencies..."
-	python -m pip install -r requirements.txt
+	python -m pip install -r backend/requirements.txt
+	python -m pip install -r frontend/requirements.txt
 
 api:
 	@echo "Launching FastAPI backend..."
-	python -m uvicorn api:app --reload --port 8000
+	cd backend && python -m uvicorn api:app --reload --port 8000
 
 app:
 	@echo "Launching Streamlit Web UI..."
-	python -m streamlit run app.py
+	cd frontend && python -m streamlit run app.py
 
 dev:
 	@echo "Starting full development environment (API + UI)..."
@@ -40,11 +41,11 @@ docker:
 
 pipeline-set5:
 	@echo "Running batch pipeline on Set5 dataset..."
-	python pipeline.py data/Set5
+	python src/pipeline.py data/Set5
 
 pipeline-set14:
 	@echo "Running batch pipeline on Set14 dataset..."
-	python pipeline.py data/Set14/Set14
+	python src/pipeline.py data/Set14/Set14
 
 test:
 	@echo "Running headless diagnostic test..."

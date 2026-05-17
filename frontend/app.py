@@ -32,7 +32,7 @@ from PIL import Image
 #  API CONFIGURATION
 # =========================================================================
 API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # #########################################################################
 #                     API CLIENT FUNCTIONS & HELPERS

@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-COPY requirements.txt .
+COPY backend/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
@@ -19,4 +19,4 @@ COPY . .
 EXPOSE 8000
 
 # Start the FastAPI server using Uvicorn
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]
