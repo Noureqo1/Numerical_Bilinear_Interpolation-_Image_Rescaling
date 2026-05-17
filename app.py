@@ -423,6 +423,306 @@ def run_synthetic_diagnostic_test(scale_factor):
 
 
 # #########################################################################
+#                  NUMERICAL ERROR ANALYSIS MODULE
+# #########################################################################
+
+def calculate_error_metrics(ground_truth_array, upscaled_array):
+    """
+    Calculate standard numerical error metrics between two images.
+
+    This is a strictly generic, standalone function -- no global
+    variables, no hardcoded paths.  It accepts any two NumPy arrays
+    of the same shape and returns a metrics dictionary.
+
+    Parameters
+    ----------
+    ground_truth_array : np.ndarray (uint8)
+        The reference high-resolution image.
+    upscaled_array : np.ndarray (uint8)
+        The reconstructed image to evaluate.
+
+    Returns
+    -------
+    dict with keys:
+        mse   : float  -- Mean Squared Error
+        psnr  : float  -- Peak Signal-to-Noise Ratio (dB)
+        mae   : float  -- Mean Absolute Error
+
+    Edge Cases
+    ----------
+    * If MSE == 0 (identical images), PSNR is set to float('inf').
+    """
+    gt  = ground_truth_array.astype(np.float64)
+    up  = upscaled_array.astype(np.float64)
+
+    # ---- MSE: (1/MN) * sum( (I - K)^2 ) ----
+    mse = np.mean((gt - up) ** 2)
+
+    # ---- PSNR: 10 * log10( MAX_I^2 / MSE ) ----
+    MAX_I = 255.0
+    if mse == 0:
+        psnr = float('inf')
+    else:
+        psnr = 10.0 * np.log10((MAX_I ** 2) / mse)
+
+    # ---- MAE: (1/MN) * sum( |I - K| ) ----
+    mae = np.mean(np.abs(gt - up))
+
+    return {"mse": mse, "psnr": psnr, "mae": mae}
+
+
+def render_error_analysis(scale_factor):
+    """
+    Full Error Analysis UI component.
+
+    Methodology
+    -----------
+    To measure *true* reconstruction error we need a known Ground Truth.
+    The pipeline is:
+        1. Start with a High-Resolution (HR) image  (Ground Truth)
+        2. Downsample it by `scale_factor` using simple decimation
+           to create a Low-Resolution (LR) version
+        3. Upscale the LR image back to HR dimensions using both
+           algorithms
+        4. Compare the upscaled result against the original Ground
+           Truth using MSE, PSNR, and MAE
+
+    Parameters
+    ----------
+    scale_factor : int
+        The down-then-up scale factor (e.g. 4).
+    """
+    import matplotlib.pyplot as plt
+    import glob
+
+    st.markdown("---")
+    st.header("\U0001f4c9 Numerical Error Analysis")
+
+    st.markdown(
+        '<div class="info-banner">'
+        '<strong>Methodology:</strong> To measure true error, we start with a '
+        'High-Resolution (HR) Ground Truth image, artificially shrink it '
+        '(downsample) to a Low-Resolution (LR) image, then use our algorithms '
+        'to scale it back up to HR dimensions. We compare the upscaled result '
+        'against the original Ground Truth using MSE, PSNR, and MAE.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ==================================================================
+    #  Discover available dataset images
+    # ==================================================================
+    data_dir = os.path.join(PROJECT_ROOT, "data", "Set5")
+    exts = ("*.png", "*.jpg", "*.jpeg", "*.bmp")
+    paths = []
+    for ext in exts:
+        paths.extend(glob.glob(os.path.join(data_dir, ext)))
+    paths.sort()
+
+    if not paths:
+        st.error(f"No images found in `{data_dir}`. Add images to run error analysis.")
+        return
+
+    image_names = [os.path.basename(p) for p in paths]
+
+    # Let the user pick which image to analyse
+    sel_col1, sel_col2 = st.columns([2, 1])
+    with sel_col1:
+        selected_name = st.selectbox(
+            "Select Ground Truth image",
+            image_names,
+            index=2,  # default to butterfly.png (smaller, faster)
+            key="error_img_select",
+        )
+    with sel_col2:
+        st.markdown(f"**Scale factor:** {scale_factor}x")
+        run_error = st.button(
+            "\U0001f4ca Run Error Analysis",
+            use_container_width=True,
+            type="primary",
+            key="run_error_btn",
+        )
+
+    if not run_error:
+        st.info("Select an image above and click **Run Error Analysis** to start.")
+        return
+
+    # ==================================================================
+    #  Load the Ground Truth HR image
+    # ==================================================================
+    sel_path = paths[image_names.index(selected_name)]
+    gt_bgr = cv2.imread(sel_path)
+    if gt_bgr is None:
+        st.error(f"Failed to load `{sel_path}`.")
+        return
+
+    gt_h, gt_w = gt_bgr.shape[:2]
+
+    # ==================================================================
+    #  Step 1 -- Downsample HR -> LR  (simple decimation / area avg)
+    # ==================================================================
+    lr_h, lr_w = gt_h // scale_factor, gt_w // scale_factor
+    if lr_h < 2 or lr_w < 2:
+        st.error("Image too small for the selected scale factor.")
+        return
+
+    # Use cv2 INTER_AREA for the *downsampling only* (to create a
+    # realistic LR input -- this is standard practice in SR benchmarks).
+    lr_bgr = cv2.resize(gt_bgr, (lr_w, lr_h), interpolation=cv2.INTER_AREA)
+
+    # Trim GT to exact multiple so shapes match after upscale
+    gt_trimmed = gt_bgr[:lr_h * scale_factor, :lr_w * scale_factor]
+
+    st.markdown(
+        f'<div class="info-banner">'
+        f'<strong>{selected_name}:</strong> '
+        f'Ground Truth {gt_w}x{gt_h} &rarr; '
+        f'Downsampled {lr_w}x{lr_h} &rarr; '
+        f'Upscaled {lr_w * scale_factor}x{lr_h * scale_factor}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ==================================================================
+    #  Step 2 -- Upscale LR -> HR with both algorithms
+    # ==================================================================
+    with st.spinner("Running downsample -> upscale -> compare pipeline..."):
+        nn_up,  t_nn  = scale_image(lr_bgr, scale_factor, "nearest")
+        bil_up, t_bil = scale_image(lr_bgr, scale_factor, "bilinear")
+
+    # ==================================================================
+    #  Step 3 -- Calculate error metrics
+    # ==================================================================
+    metrics_nn  = calculate_error_metrics(gt_trimmed, nn_up)
+    metrics_bil = calculate_error_metrics(gt_trimmed, bil_up)
+
+    # ==================================================================
+    #  Step 4 -- Display metric cards with deltas
+    # ==================================================================
+    st.markdown("### Metric Comparison")
+
+    mc1, mc2, mc3 = st.columns(3)
+
+    # MSE (lower is better)
+    mse_delta = metrics_bil["mse"] - metrics_nn["mse"]
+    with mc1:
+        st.metric(
+            "MSE (Nearest-Neighbour)",
+            f"{metrics_nn['mse']:.2f}",
+        )
+        st.metric(
+            "MSE (Bilinear)",
+            f"{metrics_bil['mse']:.2f}",
+            delta=f"{mse_delta:.2f} vs NN",
+            delta_color="inverse",  # negative = green (lower is better)
+        )
+
+    # PSNR (higher is better)
+    if metrics_bil["psnr"] != float('inf') and metrics_nn["psnr"] != float('inf'):
+        psnr_delta = metrics_bil["psnr"] - metrics_nn["psnr"]
+        psnr_delta_str = f"+{psnr_delta:.2f} dB vs NN" if psnr_delta > 0 else f"{psnr_delta:.2f} dB vs NN"
+    else:
+        psnr_delta_str = "Perfect"
+
+    with mc2:
+        psnr_nn_str = f"{metrics_nn['psnr']:.2f} dB" if metrics_nn["psnr"] != float('inf') else "Inf dB"
+        psnr_bil_str = f"{metrics_bil['psnr']:.2f} dB" if metrics_bil["psnr"] != float('inf') else "Inf dB"
+        st.metric("PSNR (Nearest-Neighbour)", psnr_nn_str)
+        st.metric(
+            "PSNR (Bilinear)",
+            psnr_bil_str,
+            delta=psnr_delta_str,
+            delta_color="normal",  # positive = green (higher is better)
+        )
+
+    # MAE (lower is better)
+    mae_delta = metrics_bil["mae"] - metrics_nn["mae"]
+    with mc3:
+        st.metric("MAE (Nearest-Neighbour)", f"{metrics_nn['mae']:.2f}")
+        st.metric(
+            "MAE (Bilinear)",
+            f"{metrics_bil['mae']:.2f}",
+            delta=f"{mae_delta:.2f} vs NN",
+            delta_color="inverse",
+        )
+
+    # ==================================================================
+    #  Step 5 -- Timing report
+    # ==================================================================
+    st.markdown("### Execution Time")
+    tc1, tc2 = st.columns(2)
+    with tc1:
+        st.metric("NN Time", f"{t_nn:.3f} s")
+    with tc2:
+        st.metric("Bilinear Time", f"{t_bil:.3f} s")
+
+    # ==================================================================
+    #  Step 6 -- Visual error heatmaps  (Matplotlib)
+    # ==================================================================
+    st.markdown("### Absolute Error Heatmaps")
+    st.caption(
+        "Brighter regions = higher pixel error. "
+        "Computed as |Ground Truth - Upscaled| averaged across colour channels."
+    )
+
+    # Absolute error per pixel, averaged across channels
+    err_nn  = np.mean(np.abs(
+        gt_trimmed.astype(np.float64) - nn_up.astype(np.float64)
+    ), axis=2)
+    err_bil = np.mean(np.abs(
+        gt_trimmed.astype(np.float64) - bil_up.astype(np.float64)
+    ), axis=2)
+
+    # Shared colour scale for fair comparison
+    vmax = max(err_nn.max(), err_bil.max(), 1)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    fig.patch.set_facecolor("#0e1117")
+
+    im1 = ax1.imshow(err_nn, cmap="inferno", vmin=0, vmax=vmax)
+    ax1.set_title("Nearest-Neighbour Error", color="white", fontsize=12)
+    ax1.axis("off")
+
+    im2 = ax2.imshow(err_bil, cmap="inferno", vmin=0, vmax=vmax)
+    ax2.set_title("Bilinear Error", color="white", fontsize=12)
+    ax2.axis("off")
+
+    # Shared colourbar
+    cbar = fig.colorbar(im2, ax=[ax1, ax2], fraction=0.02, pad=0.04)
+    cbar.set_label("Absolute Error (0-255)", color="white", fontsize=10)
+    cbar.ax.yaxis.set_tick_params(color="white")
+    plt.setp(cbar.ax.yaxis.get_ticklabels(), color="white")
+
+    plt.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+    # ==================================================================
+    #  Step 7 -- Side-by-side visual comparison
+    # ==================================================================
+    st.markdown("### Visual Comparison")
+    vc1, vc2, vc3 = st.columns(3)
+    with vc1:
+        st.markdown(
+            '<div class="zoom-label">'
+            '<div class="title">Ground Truth</div>'
+            '</div>', unsafe_allow_html=True)
+        st.image(bgr_to_rgb(gt_trimmed), width="stretch")
+    with vc2:
+        st.markdown(
+            '<div class="zoom-label">'
+            '<div class="title">NN Upscaled</div>'
+            '</div>', unsafe_allow_html=True)
+        st.image(bgr_to_rgb(nn_up), width="stretch")
+    with vc3:
+        st.markdown(
+            '<div class="zoom-label">'
+            '<div class="title">Bilinear Upscaled</div>'
+            '</div>', unsafe_allow_html=True)
+        st.image(bgr_to_rgb(bil_up), width="stretch")
+
+
+# #########################################################################
 #                     PAGE CONFIGURATION
 # #########################################################################
 
@@ -649,6 +949,13 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    if st.button(
+        "\U0001f4c9 Error Analysis (Dataset)",
+        use_container_width=True,
+    ):
+        st.session_state["show_error_analysis"] = True
+
+    st.markdown("---")
     st.markdown(
         "<small style='color:#6a6a9a;'>"
         "Built with manual NumPy loops.<br>"
@@ -806,3 +1113,10 @@ else:
 
 if test_button:
     run_synthetic_diagnostic_test(scale_factor)
+
+# #########################################################################
+#          ERROR ANALYSIS EXECUTION (persistent via session_state)
+# #########################################################################
+
+if st.session_state.get("show_error_analysis", False):
+    render_error_analysis(scale_factor)
