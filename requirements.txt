@@ -1,5 +1,5 @@
 numpy
-opencv-python
+opencv-python-headless
 matplotlib
 pandas
 tabulate
